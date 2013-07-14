@@ -1,0 +1,87 @@
+#include <linux/fs.h> 
+#include <linux/init.h>
+#include <linux/miscdevice.h>
+#include <linux/module.h> 
+#include <linux/kernel.h> 
+#include <asm/uaccess.h>
+static ssize_t hello_read(struct file * file, char * buf, 
+                          size_t count, loff_t *ppos)
+{
+        char *hello_str = "Hello, world!n";
+        int len = strlen(hello_str); /* 비어있는 문자열인지 확인하기 위해서 길이를 계산한다. */
+        /*
+         * 전체 스트링을 한 번에 읽어들이는 연산만 허용한다.
+         */
+        if (count < len)
+                return -EINVAL;
+        /*
+         * position 값이 0이 아니면,
+         * 더 이상 읽을 데이터가 없는 것으로 간주한다.
+         */
+        if (*ppos != 0)
+                return 0;
+        /*
+         * 문자열을 유저 버퍼에 쓰는 것 외에
+         * 해당 유저가 버퍼에 쓸 수 있는 권한이 있는지도 확인한다.
+         * 
+         */
+        if (copy_to_user(buf, hello_str, len))
+                return -EINVAL;
+        /*
+         * 진행상황을 유저에게 알려준다.
+         */
+        *ppos = len;
+
+        return len;
+}
+
+static const struct file_operations hello_fops = {
+        .owner                = THIS_MODULE,
+        .read                = hello_read,
+};
+
+static struct miscdevice hello_dev = {
+        /*
+         * MINOR 번호를 직접 지정하지 않고
+         * 커널이 선택하도록 한다.
+         */
+        MISC_DYNAMIC_MINOR,
+        /*
+         * 장치의 이름을 hello로 한다.
+         */
+        "hello",
+        /*
+         * 파일 연산을 할 때 호출되게 될
+         * 함수를 정의
+         */
+        &hello_fops
+};
+
+static int __init
+hello_init(void)
+{
+        int ret;
+
+        /*
+         * sys/class/misc 디렉토리에 /dev/hello 장치를 만든다.
+         * udev가 자동적으로 정해진 규칙에 따라서 /dev/hello 장치를 
+         * 만들게 된다.
+         */
+        ret = misc_register(&hello_dev);
+        if (ret)
+                printk(KERN_ERR "Unable to register Hello, world! misc devicen");
+
+        return ret;
+}
+
+module_init(hello_init);
+
+static void __exit
+hello_exit(void)
+{
+        misc_deregister(&hello_dev);
+}
+
+module_exit(hello_exit);
+
+MODULE_LICENSE("GPL");
